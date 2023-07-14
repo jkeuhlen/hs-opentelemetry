@@ -248,6 +248,7 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
         Exporter.exporterExport exporter batchToProcess
 
   let flushQueueImmediately ret = do
+        putStrLn "Flushing queue"
         batchToProcess <- atomicModifyIORef' batch buildExport
         if null batchToProcess
           then do
@@ -269,6 +270,7 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
 
   let workerAction = do
         req <- waiting
+        putStrLn "Worker working"
         batchToProcess <- atomicModifyIORef' batch buildExport
         res <- publish batchToProcess
 
@@ -294,7 +296,9 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
                   then -- If the batch has grown to the maximum export size, prompt the worker to export it.
                     (b', True)
                   else (b', False)
-          when appendFailedOrExportNeeded $ void $ atomically $ tryPutTMVar workSignal ()
+          when appendFailedOrExportNeeded $ do
+            putStrLn "putting worker signal"
+            void $ atomically $ tryPutTMVar workSignal ()
       , processorForceFlush = void $ atomically $ tryPutTMVar workSignal ()
       , -- TODO where to call restore, if anywhere?
         processorShutdown =
