@@ -31,6 +31,7 @@ import Control.Monad.IO.Class
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import Data.IORef (atomicModifyIORef', newIORef, readIORef)
+import Data.Time.Clock
 import Data.Vector (Vector)
 import OpenTelemetry.Exporter (Exporter)
 import qualified OpenTelemetry.Exporter as Exporter
@@ -198,7 +199,7 @@ buildExport m =
   )
 
 
-data ProcessorMessage = Flush | Shutdown
+data ProcessorMessage = ScheduledFlush | ForcedFlush | Shutdown deriving (Show)
 
 
 -- note: [Unmasking Asyncs]
@@ -246,8 +247,10 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
         -- if we've received a shutdown, then we should be expecting
         -- a `cancel` anytime now.
         putStrLn "starting export publish"
+        startTime <- getCurrentTime
         Exporter.exporterExport exporter batchToProcess
-        putStrLn "finished export publish"
+        endTime <- getCurrentTime
+        putStrLn $ "finished export publish in " <> show (diffUTCTime endTime startTime)
 
   let flushQueueImmediately ret = do
         putStrLn "Flushing queue"
@@ -263,16 +266,17 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
         delay <- registerDelay (millisToMicros scheduledDelayMillis)
         atomically $ do
           msum
-            [ Flush <$ do
+            -- Flush every scheduled delay time, when the worker signal is explicitly pushed, or when the shutdown signal is received.
+            [ ScheduledFlush <$ do
                 continue <- readTVar delay
                 check continue
-            , Flush <$ takeTMVar workSignal
+            , ForcedFlush <$ takeTMVar workSignal
             , Shutdown <$ takeTMVar shutdownSignal
             ]
 
   let workerAction = do
         req <- waiting
-        putStrLn "Worker working"
+        putStrLn $ "Worker working due to " <> show req
         batchToProcess <- atomicModifyIORef' batch buildExport
         res <- publish batchToProcess
 
@@ -299,10 +303,11 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
                   then -- If the batch has grown to the maximum export size, prompt the worker to export it.
                     (b', (True, False))
                   else (b', (False, False))
-          when (snd appendFailedOrExportNeeded) $ do
-            putStrLn "you're dropping spans, dawg"
-          when (fst appendFailedOrExportNeeded) $ do
-            putStrLn "putting worker signal"
+          when (appendFailedOrExportNeeded == (True, True)) $ do
+            putStrLn "you're dropping spans, dawg. get to work!"
+            void $ atomically $ tryPutTMVar workSignal ()
+          when (appendFailedOrExportNeeded == (True, False)) $ do
+            putStrLn "Hit max export size, prompting worker to export"
             void $ atomically $ tryPutTMVar workSignal ()
       , processorForceFlush = void $ atomically $ tryPutTMVar workSignal ()
       , -- TODO where to call restore, if anywhere?
@@ -342,7 +347,7 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
                         check shouldStop
                     ]
 
-              -- make sure the worker comes down.
+              -- make sure the worker comes down if we timed out.
               cancel worker
               -- TODO, not convinced we should shut down processor here
 
