@@ -245,7 +245,9 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
         --
         -- if we've received a shutdown, then we should be expecting
         -- a `cancel` anytime now.
+        putStrLn "starting export publish"
         Exporter.exporterExport exporter batchToProcess
+        putStrLn "finished export publish"
 
   let flushQueueImmediately ret = do
         putStrLn "Flushing queue"
@@ -290,7 +292,9 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
           span_ <- readIORef s
           appendFailedOrExportNeeded <- atomicModifyIORef' batch $ \builder ->
             case push span_ builder of
-              Nothing -> (builder, True)
+              Nothing -> do
+                putStrLn "you're dropping spans, dog"
+                (builder, True)
               Just b' ->
                 if itemCount b' >= itemMaxExportBounds b'
                   then -- If the batch has grown to the maximum export size, prompt the worker to export it.
