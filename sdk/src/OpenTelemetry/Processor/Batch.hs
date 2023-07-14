@@ -293,14 +293,15 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
           appendFailedOrExportNeeded <- atomicModifyIORef' batch $ \builder ->
             case push span_ builder of
               Nothing -> do
-                putStrLn "you're dropping spans, dog"
-                (builder, True)
+                (builder, (True, True))
               Just b' ->
                 if itemCount b' >= itemMaxExportBounds b'
                   then -- If the batch has grown to the maximum export size, prompt the worker to export it.
-                    (b', True)
-                  else (b', False)
-          when appendFailedOrExportNeeded $ do
+                    (b', (True, False))
+                  else (b', (False, False))
+          when (snd appendFailedOrExportNeeded) $ do
+            putStrLn "you're dropping spans, dawg"
+          when (fst appendFailedOrExportNeeded) $ do
             putStrLn "putting worker signal"
             void $ atomically $ tryPutTMVar workSignal ()
       , processorForceFlush = void $ atomically $ tryPutTMVar workSignal ()
