@@ -343,8 +343,8 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
                   pure ShutdownTimeout
                 Just er ->
                   case er of
-                    Left _ -> do
-                      putStrLn $ "hs-opentelemetry batch processor failed to shut down gracefully." <> show er
+                    Left err -> do
+                      putStrLn $ "hs-opentelemetry batch processor failed to shut down gracefully." <> show err
                       pure ShutdownFailure
                     Right _ -> do
                       putStrLn "hs-opentelemetry batch processor shut down gracefully."
