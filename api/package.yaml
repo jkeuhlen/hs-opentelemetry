@@ -36,6 +36,7 @@ dependencies:
 - clock
 - memory
 - mtl
+- time
 - transformers
 - http-types
 - attoparsec

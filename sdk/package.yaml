@@ -39,6 +39,7 @@ dependencies:
 - network-bsd
 - unix
 - transformers
+- time
 - random >= 1.2.0
 
 library:

@@ -82,6 +82,7 @@ library
     , random >=1.2.0
     , stm
     , text
+    , time
     , transformers
     , unagi-chan
     , unix
@@ -118,6 +119,7 @@ test-suite hs-opentelemetry-sdk-test
     , random >=1.2.0
     , stm
     , text
+    , time
     , transformers
     , unagi-chan
     , unix
