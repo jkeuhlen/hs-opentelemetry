@@ -289,12 +289,11 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
           appendFailedOrExportNeeded <- atomicModifyIORef' batch $ \builder ->
             case push span_ builder of
               Nothing -> (builder, True)
-              Just b' -> if itemCount b' >= itemMaxExportBounds b'
-                then
-                  -- If the batch has grown to the maximum export size, prompt the worker to export it.
-                  (b', True)
-                else
-                  (b', False)
+              Just b' ->
+                if itemCount b' >= itemMaxExportBounds b'
+                  then -- If the batch has grown to the maximum export size, prompt the worker to export it.
+                    (b', True)
+                  else (b', False)
           when appendFailedOrExportNeeded $ void $ atomically $ tryPutTMVar workSignal ()
       , processorForceFlush = void $ atomically $ tryPutTMVar workSignal ()
       , -- TODO where to call restore, if anywhere?
@@ -329,7 +328,7 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
                 atomically $
                   msum
                     [ Just <$> waitCatchSTM worker
-                    , const Nothing <$> do
+                    , Nothing <$ do
                         shouldStop <- readTVar delay
                         check shouldStop
                     ]
@@ -338,15 +337,18 @@ batchProcessor BatchTimeoutConfig {..} exporter = liftIO $ do
               cancel worker
               -- TODO, not convinced we should shut down processor here
 
-              pure $ case shutdownResult of
-                Nothing ->
-                  ShutdownTimeout
+              case shutdownResult of
+                Nothing -> do
+                  putStrLn "hs-opentelemetry batch processor timed out while shutting down."
+                  pure ShutdownTimeout
                 Just er ->
                   case er of
-                    Left _ ->
-                      ShutdownFailure
-                    Right _ ->
-                      ShutdownSuccess
+                    Left _ -> do
+                      putStrLn $ "hs-opentelemetry batch processor failed to shut down gracefully." <> show er
+                      pure ShutdownFailure
+                    Right _ -> do
+                      putStrLn "hs-opentelemetry batch processor shut down gracefully."
+                      pure ShutdownSuccess
       }
   where
     millisToMicros = (* 1000)
